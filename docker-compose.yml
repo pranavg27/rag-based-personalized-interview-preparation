@@ -1,0 +1,48 @@
+# Full stack:  docker compose up --build
+# Only MongoDB (for running backend/frontend locally):  docker compose up -d mongo
+services:
+  mongo:
+    image: mongo:7
+    container_name: interview_prep_mongo
+    ports: ["27017:27017"]
+    volumes: [mongo_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    container_name: interview_prep_backend
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      BACKEND_URL: http://localhost:8000      # MCP (embedded) calls the backend over its own port
+      CHROMA_PERSIST_DIR: /srv/data/chroma
+      UPLOAD_DIR: /srv/data/uploads
+      FAISS_INDEX_DIR: /srv/data/faiss
+    ports: ["8000:8000"]
+    volumes: [app_data:/srv/data]
+    depends_on:
+      mongo: { condition: service_healthy }
+
+  frontend:
+    build: { context: ., dockerfile: frontend/Dockerfile }
+    container_name: interview_prep_frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports: ["8501:8501"]
+    depends_on: [backend]
+
+  # Optional: only needed when MCP servers run as separate processes (MCP_MODE=external, CHROMA_MODE=http)
+  chroma:
+    image: chromadb/chroma:latest
+    profiles: ["external-mcp"]
+    ports: ["8001:8000"]
+    volumes: [chroma_data:/data]
+
+volumes:
+  mongo_data:
+  app_data:
+  chroma_data:
